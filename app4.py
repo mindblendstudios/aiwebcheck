@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import os
-import json
 import pandas as pd
 from bs4 import BeautifulSoup
 from fpdf import FPDF
@@ -16,9 +15,9 @@ st.set_page_config(page_title="AI Website Testing Platform", layout="wide")
 os.makedirs("screenshots", exist_ok=True)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
 # ================== HELPER FUNCTIONS ==================
 def safe_get(url, timeout=10):
+    """Safe GET request that handles SSL issues and unreachable hosts."""
     try:
         return requests.get(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -31,8 +30,8 @@ def safe_get(url, timeout=10):
         st.warning(f"⚠️ Could not reach {url}: {e}")
         return None
 
-
 def safe_head(url, timeout=5):
+    """Safe HEAD request that handles SSL issues and unreachable hosts."""
     try:
         return requests.head(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -45,8 +44,8 @@ def safe_head(url, timeout=5):
         st.warning(f"⚠️ Could not reach {url}: {e}")
         return None
 
-
 def is_valid_hostname(url):
+    """Checks if the URL's domain can be resolved."""
     try:
         hostname = url.replace("https://", "").replace("http://", "").split("/")[0]
         socket.gethostbyname(hostname)
@@ -54,6 +53,28 @@ def is_valid_hostname(url):
     except socket.error:
         return False
 
+def get_live_screenshot(url):
+    """Fetches a live screenshot using thum.io API."""
+    screenshot_path = "screenshots/page.png"
+    api_url = f"https://image.thum.io/get/{url}"
+    try:
+        r = requests.get(api_url, stream=True, timeout=10)
+        if r.status_code == 200:
+            with open(screenshot_path, "wb") as f:
+                for chunk in r.iter_content(1024):
+                    f.write(chunk)
+            return screenshot_path
+        else:
+            st.warning(f"⚠️ Screenshot service returned status {r.status_code}")
+    except Exception as e:
+        st.warning(f"⚠️ Could not fetch live screenshot: {e}")
+    # Fallback placeholder
+    img = Image.new("RGB", (1200, 800), color=(200, 200, 200))
+    from PIL import ImageDraw
+    draw = ImageDraw.Draw(img)
+    draw.text((50, 400), f"Preview unavailable: {url}", fill=(0, 0, 0))
+    img.save(screenshot_path)
+    return screenshot_path
 
 # ================== AGENTS ==================
 class FunctionalAgent:
@@ -79,7 +100,6 @@ class FunctionalAgent:
                     issues.append(f"Broken link: {href}")
         return issues
 
-
 class UXAgent:
     def __init__(self, url):
         self.url = url
@@ -97,7 +117,6 @@ class UXAgent:
         if not soup.find("meta", {"name": "viewport"}):
             issues.append("Viewport meta tag missing")
         return issues
-
 
 class AccessibilityAgent:
     def __init__(self, url):
@@ -120,7 +139,6 @@ class AccessibilityAgent:
 
         return issues
 
-
 class SecurityAgent:
     def __init__(self, url):
         self.url = url
@@ -139,27 +157,20 @@ class SecurityAgent:
             issues.append("Website not using HTTPS")
         return issues
 
-
-# ================== BROWSER AGENT (DISABLED) ==================
+# ================== BROWSER AGENT ==================
 class BrowserAgent:
     """
-    Browser automation is disabled for Streamlit Cloud.
-    Provides placeholder screenshot.
+    Browser automation disabled.
+    Fetch live screenshot via service.
     """
     def __init__(self, url):
         self.url = url
-        self.screenshot = "screenshots/placeholder.png"
         self.issues = []
 
-        # create placeholder image if not exists
-        if not os.path.exists(self.screenshot):
-            img = Image.new("RGB", (1200, 800), color=(200, 200, 200))
-            img.save(self.screenshot)
-
     def run(self):
-        self.issues.append("Browser automation disabled in this environment")
-        return self.issues, self.screenshot
-
+        screenshot = get_live_screenshot(self.url)
+        self.issues.append("Browser automation disabled; using live preview instead")
+        return self.issues, screenshot
 
 # ================== SSL HEALTH AGENT ==================
 class SSLHealthAgent:
@@ -187,6 +198,7 @@ class SSLHealthAgent:
                     response = safe_get(f"https://{self.url}")
                     if response and "Strict-Transport-Security" in response.headers:
                         hsts = True
+
         except Exception as e:
             issues.append(f"SSL/TLS connection failed: {e}")
 
@@ -196,7 +208,6 @@ class SSLHealthAgent:
             "hsts": hsts
         }
 
-
 # ================== AI VISUAL UX AGENT ==================
 class AIVisualUXAgent:
     def __init__(self, screenshot_path):
@@ -205,6 +216,7 @@ class AIVisualUXAgent:
     def run(self):
         if not self.screenshot_path or not os.path.exists(self.screenshot_path):
             return ["Screenshot not available, cannot generate UX critique."]
+        # Mock AI critique
         critique = [
             "Primary call-to-action button is not prominent.",
             "Navigation menu could be clearer on mobile.",
@@ -212,7 +224,6 @@ class AIVisualUXAgent:
             "Too many elements above the fold, consider simplifying."
         ]
         return critique
-
 
 # ================== EXPORTERS ==================
 def export_csv(report):
@@ -231,7 +242,6 @@ def export_csv(report):
     df = pd.DataFrame(rows)
     df.to_csv("defects.csv", index=False)
     return "defects.csv"
-
 
 def export_pdf(report):
     pdf = FPDF()
@@ -255,7 +265,6 @@ def export_pdf(report):
     pdf.output("defects.pdf")
     return "defects.pdf"
 
-
 # ================== STREAMLIT UI ==================
 st.title("🤖 AI Website Testing Platform")
 st.write("Functional, UX, accessibility, security, SSL/TLS checks + AI visual UX critique.")
@@ -270,6 +279,7 @@ if st.button("🚀 Run Tests"):
     else:
         with st.spinner("Running tests..."):
 
+            # Core agents
             report = {
                 "Functional Issues": FunctionalAgent(url).run(),
                 "UX Issues": UXAgent(url).run(),
@@ -277,7 +287,7 @@ if st.button("🚀 Run Tests"):
                 "Security Issues": SecurityAgent(url).run(),
             }
 
-            # Browser screenshot with placeholder
+            # Browser screenshot
             browser_issues, screenshot = BrowserAgent(url).run()
             report["Browser Issues"] = browser_issues
 
@@ -311,12 +321,11 @@ if st.button("🚀 Run Tests"):
                     st.success("No issues found")
 
         # -------- SCREENSHOT --------
-        st.subheader("📸 Website Screenshot")
         if screenshot and os.path.exists(screenshot):
-            img = Image.open(screenshot)
-            st.image(img, width=800)  # Fixed width instead of use_container_width
+            st.subheader("📸 Website Screenshot")
+            st.image(Image.open(screenshot))
         else:
-            st.info("Screenshot not available (browser testing failed)")
+            st.info("Screenshot not available")
 
         # -------- EXPORTS --------
         csv_file = export_csv(report)
