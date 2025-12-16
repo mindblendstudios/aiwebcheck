@@ -19,7 +19,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ================== HELPER FUNCTIONS ==================
 def safe_get(url, timeout=10):
-    """Safe GET request that handles SSL issues and unreachable hosts."""
     try:
         return requests.get(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -34,7 +33,6 @@ def safe_get(url, timeout=10):
 
 
 def safe_head(url, timeout=5):
-    """Safe HEAD request that handles SSL issues and unreachable hosts."""
     try:
         return requests.head(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -49,7 +47,6 @@ def safe_head(url, timeout=5):
 
 
 def is_valid_hostname(url):
-    """Check if URL's domain can be resolved."""
     try:
         hostname = url.replace("https://", "").replace("http://", "").split("/")[0]
         socket.gethostbyname(hostname)
@@ -143,26 +140,24 @@ class SecurityAgent:
         return issues
 
 
-# ================== BROWSER AGENT ==================
+# ================== BROWSER AGENT (DISABLED) ==================
 class BrowserAgent:
     """
     Browser automation is disabled for Streamlit Cloud.
-    Placeholder screenshot used instead.
+    Provides placeholder screenshot.
     """
     def __init__(self, url):
         self.url = url
         self.screenshot = "screenshots/placeholder.png"
         self.issues = []
 
-    def run(self):
-        # Ensure placeholder screenshot exists
+        # create placeholder image if not exists
         if not os.path.exists(self.screenshot):
-            from PIL import Image, ImageDraw, ImageFont
-            img = Image.new('RGB', (1200, 800), color=(200, 200, 200))
-            d = ImageDraw.Draw(img)
-            d.text((50, 50), "Screenshot not available", fill=(0, 0, 0))
+            img = Image.new("RGB", (1200, 800), color=(200, 200, 200))
             img.save(self.screenshot)
-        self.issues.append("Browser automation disabled on this platform")
+
+    def run(self):
+        self.issues.append("Browser automation disabled in this environment")
         return self.issues, self.screenshot
 
 
@@ -175,6 +170,7 @@ class SSLHealthAgent:
         issues = []
         tls_version = None
         hsts = False
+
         context = ssl.create_default_context()
 
         try:
@@ -194,7 +190,11 @@ class SSLHealthAgent:
         except Exception as e:
             issues.append(f"SSL/TLS connection failed: {e}")
 
-        return {"issues": issues, "tls_version": tls_version, "hsts": hsts}
+        return {
+            "issues": issues,
+            "tls_version": tls_version,
+            "hsts": hsts
+        }
 
 
 # ================== AI VISUAL UX AGENT ==================
@@ -205,7 +205,6 @@ class AIVisualUXAgent:
     def run(self):
         if not self.screenshot_path or not os.path.exists(self.screenshot_path):
             return ["Screenshot not available, cannot generate UX critique."]
-        # Mock AI critique
         critique = [
             "Primary call-to-action button is not prominent.",
             "Navigation menu could be clearer on mobile.",
@@ -271,7 +270,6 @@ if st.button("🚀 Run Tests"):
     else:
         with st.spinner("Running tests..."):
 
-            # Core agents
             report = {
                 "Functional Issues": FunctionalAgent(url).run(),
                 "UX Issues": UXAgent(url).run(),
@@ -279,7 +277,7 @@ if st.button("🚀 Run Tests"):
                 "Security Issues": SecurityAgent(url).run(),
             }
 
-            # Browser screenshot
+            # Browser screenshot with placeholder
             browser_issues, screenshot = BrowserAgent(url).run()
             report["Browser Issues"] = browser_issues
 
@@ -316,9 +314,9 @@ if st.button("🚀 Run Tests"):
         st.subheader("📸 Website Screenshot")
         if screenshot and os.path.exists(screenshot):
             img = Image.open(screenshot)
-    	    st.image(img, width=800)  # Replace use_container_width with fixed width
+            st.image(img, width=800)  # Fixed width instead of use_container_width
         else:
-            st.info("Screenshot not available. Browser automation is disabled or failed.")
+            st.info("Screenshot not available (browser testing failed)")
 
         # -------- EXPORTS --------
         csv_file = export_csv(report)
