@@ -5,3 +5,18 @@ urllib3==2.0.4
 pandas==2.1.1
 fpdf==1.7.2
 pillow==9.5.0
+
+# Browser automation
+playwright==1.44.0
+selenium==5.9.0
+webdriver-manager==4.0.0
+
+# Optional AI critique (mocked in current version)
+# openai==1.31.0
+
+# Optional PDF/image enhancements
+# reportlab==4.1.0
+# Browser automation (optional, can comment out if fails)
+# playwright==1.44.0
+# selenium==5.9.0
+# webdriver-manager==4.0.0
