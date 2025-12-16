@@ -10,13 +10,3 @@ pillow==9.5.0
 playwright==1.44.0
 selenium==5.9.0
 webdriver-manager==4.0.0
-
-# Optional AI critique (mocked in current version)
-# openai==1.31.0
-
-# Optional PDF/image enhancements
-# reportlab==4.1.0
-# Browser automation (optional, can comment out if fails)
-# playwright==1.44.0
-# selenium==5.9.0
-# webdriver-manager==4.0.0
