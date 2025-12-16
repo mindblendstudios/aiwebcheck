@@ -1,10 +1,11 @@
 import streamlit as st
 import requests
 import os
+import json
 import pandas as pd
 from bs4 import BeautifulSoup
 from fpdf import FPDF
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import ssl
 import socket
 import datetime
@@ -18,6 +19,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ================== HELPER FUNCTIONS ==================
 def safe_get(url, timeout=10):
+    """Safe GET request that handles SSL issues and unreachable hosts."""
     try:
         return requests.get(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -32,6 +34,7 @@ def safe_get(url, timeout=10):
 
 
 def safe_head(url, timeout=5):
+    """Safe HEAD request that handles SSL issues and unreachable hosts."""
     try:
         return requests.head(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -46,6 +49,7 @@ def safe_head(url, timeout=5):
 
 
 def is_valid_hostname(url):
+    """Check if URL's domain can be resolved."""
     try:
         hostname = url.replace("https://", "").replace("http://", "").split("/")[0]
         socket.gethostbyname(hostname)
@@ -141,41 +145,24 @@ class SecurityAgent:
 
 # ================== BROWSER AGENT ==================
 class BrowserAgent:
+    """
+    Browser automation is disabled for Streamlit Cloud.
+    Placeholder screenshot used instead.
+    """
     def __init__(self, url):
         self.url = url
-        self.screenshot = "screenshots/page.png"
+        self.screenshot = "screenshots/placeholder.png"
         self.issues = []
 
     def run(self):
-        # Try Playwright first
-        try:
-            from playwright.sync_api import sync_playwright
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                response = page.goto(self.url, timeout=20000)
-                if response and response.status >= 400:
-                    self.issues.append(f"Browser load failed ({response.status})")
-                page.screenshot(path=self.screenshot, full_page=True)
-                browser.close()
-                return self.issues, self.screenshot
-        except Exception:
-            self.issues.append("Playwright not available or failed")
-
-        # Fallback placeholder screenshot
+        # Ensure placeholder screenshot exists
         if not os.path.exists(self.screenshot):
-            img = Image.new("RGB", (1280, 720), color=(200, 200, 200))
-            draw = ImageDraw.Draw(img)
-            text = "Screenshot not available"
-            try:
-                font = ImageFont.load_default()
-                text_w, text_h = draw.textsize(text, font=font)
-                draw.text(((1280 - text_w) / 2, (720 - text_h) / 2),
-                          text, fill=(50, 50, 50), font=font)
-            except:
-                draw.text((500, 360), text, fill=(50, 50, 50))
+            from PIL import Image, ImageDraw, ImageFont
+            img = Image.new('RGB', (1200, 800), color=(200, 200, 200))
+            d = ImageDraw.Draw(img)
+            d.text((50, 50), "Screenshot not available", fill=(0, 0, 0))
             img.save(self.screenshot)
-
+        self.issues.append("Browser automation disabled on this platform")
         return self.issues, self.screenshot
 
 
@@ -257,7 +244,7 @@ def export_pdf(report):
             for issue in issues:
                 pdf.multi_cell(0, 6, f"- {issue}")
         elif isinstance(issues, dict):
-            if "issues" in issues and issues["issues"]:
+            if "issues" in issues:
                 for issue in issues["issues"]:
                     pdf.multi_cell(0, 6, f"- {issue}")
             if "tls_version" in issues and issues["tls_version"]:
@@ -283,6 +270,8 @@ if st.button("🚀 Run Tests"):
         st.error("⚠️ Cannot resolve domain. Please check the URL and include https://")
     else:
         with st.spinner("Running tests..."):
+
+            # Core agents
             report = {
                 "Functional Issues": FunctionalAgent(url).run(),
                 "UX Issues": UXAgent(url).run(),
@@ -290,9 +279,14 @@ if st.button("🚀 Run Tests"):
                 "Security Issues": SecurityAgent(url).run(),
             }
 
+            # Browser screenshot
             browser_issues, screenshot = BrowserAgent(url).run()
             report["Browser Issues"] = browser_issues
+
+            # AI UX critique
             report["AI UX Critique"] = {"UX Critique": AIVisualUXAgent(screenshot).run()}
+
+            # SSL health
             ssl_report = SSLHealthAgent(url).run()
             report["SSL Health"] = ssl_report
 
@@ -319,14 +313,15 @@ if st.button("🚀 Run Tests"):
                     st.success("No issues found")
 
         # -------- SCREENSHOT --------
+        st.subheader("📸 Website Screenshot")
         if screenshot and os.path.exists(screenshot):
-            st.subheader("📸 Website Screenshot")
-            st.image(Image.open(screenshot), use_container_width=True)
+            st.image(screenshot, use_container_width=True)
         else:
-            st.info("Screenshot not available (browser testing failed)")
+            st.info("Screenshot not available. Browser automation is disabled or failed.")
 
         # -------- EXPORTS --------
         csv_file = export_csv(report)
         pdf_file = export_pdf(report)
+
         st.download_button("⬇️ Download CSV", open(csv_file, "rb"), csv_file)
         st.download_button("⬇️ Download PDF", open(pdf_file, "rb"), pdf_file)
