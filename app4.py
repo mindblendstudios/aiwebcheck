@@ -315,7 +315,8 @@ if st.button("🚀 Run Tests"):
         # -------- SCREENSHOT --------
         st.subheader("📸 Website Screenshot")
         if screenshot and os.path.exists(screenshot):
-            st.image(screenshot, use_container_width=True)
+            img = Image.open(screenshot)
+    	    st.image(img, width=800)  # Replace use_container_width with fixed width
         else:
             st.info("Screenshot not available. Browser automation is disabled or failed.")
 
