@@ -1,12 +1,10 @@
 import streamlit as st
 import requests
 import os
-import json
-import subprocess
 import pandas as pd
 from bs4 import BeautifulSoup
 from fpdf import FPDF
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import ssl
 import socket
 import datetime
@@ -20,7 +18,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ================== HELPER FUNCTIONS ==================
 def safe_get(url, timeout=10):
-    """Safe GET request that handles SSL issues and unreachable hosts."""
     try:
         return requests.get(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -35,7 +32,6 @@ def safe_get(url, timeout=10):
 
 
 def safe_head(url, timeout=5):
-    """Safe HEAD request that handles SSL issues and unreachable hosts."""
     try:
         return requests.head(url, timeout=timeout)
     except requests.exceptions.SSLError:
@@ -50,10 +46,6 @@ def safe_head(url, timeout=5):
 
 
 def is_valid_hostname(url):
-    """
-    Checks if the URL's domain can be resolved.
-    Returns False if DNS resolution fails.
-    """
     try:
         hostname = url.replace("https://", "").replace("http://", "").split("/")[0]
         socket.gethostbyname(hostname)
@@ -149,10 +141,6 @@ class SecurityAgent:
 
 # ================== BROWSER AGENT ==================
 class BrowserAgent:
-    """
-    Tries Playwright first, falls back to Selenium.
-    Captures screenshot for AI UX critique.
-    """
     def __init__(self, url):
         self.url = url
         self.screenshot = "screenshots/page.png"
@@ -166,53 +154,29 @@ class BrowserAgent:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
                 response = page.goto(self.url, timeout=20000)
-
                 if response and response.status >= 400:
                     self.issues.append(f"Browser load failed ({response.status})")
-
                 page.screenshot(path=self.screenshot, full_page=True)
-                if page.locator("nav").count() == 0:
-                    self.issues.append("Navigation missing (browser check)")
-
                 browser.close()
                 return self.issues, self.screenshot
+        except Exception:
+            self.issues.append("Playwright not available or failed")
 
-        except (ImportError, NotImplementedError, Exception):
-            # Selenium fallback
+        # Fallback placeholder screenshot
+        if not os.path.exists(self.screenshot):
+            img = Image.new("RGB", (1280, 720), color=(200, 200, 200))
+            draw = ImageDraw.Draw(img)
+            text = "Screenshot not available"
             try:
-                from selenium import webdriver
-                from selenium.webdriver.chrome.service import Service
-                from selenium.webdriver.chrome.options import Options
-                from selenium.webdriver.common.by import By
-                from webdriver_manager.chrome import ChromeDriverManager
+                font = ImageFont.load_default()
+                text_w, text_h = draw.textsize(text, font=font)
+                draw.text(((1280 - text_w) / 2, (720 - text_h) / 2),
+                          text, fill=(50, 50, 50), font=font)
+            except:
+                draw.text((500, 360), text, fill=(50, 50, 50))
+            img.save(self.screenshot)
 
-                chrome_options = Options()
-                chrome_options.add_argument("--headless=new")
-                chrome_options.add_argument("--disable-gpu")
-                chrome_options.add_argument("--no-sandbox")
-                chrome_options.add_argument("--window-size=1920,1080")
-
-                driver = webdriver.Chrome(
-                    service=Service(ChromeDriverManager().install()),
-                    options=chrome_options
-                )
-
-                driver.get(self.url)
-                driver.save_screenshot(self.screenshot)
-
-                try:
-                    nav = driver.find_element(By.TAG_NAME, "nav")
-                    if not nav:
-                        self.issues.append("Navigation missing (Selenium check)")
-                except:
-                    self.issues.append("Navigation missing (Selenium check)")
-
-                driver.quit()
-                return self.issues, self.screenshot
-
-            except Exception as se:
-                self.issues.append(f"Browser testing failed: {str(se)}")
-                return self.issues, None
+        return self.issues, self.screenshot
 
 
 # ================== SSL HEALTH AGENT ==================
@@ -224,7 +188,6 @@ class SSLHealthAgent:
         issues = []
         tls_version = None
         hsts = False
-
         context = ssl.create_default_context()
 
         try:
@@ -241,15 +204,10 @@ class SSLHealthAgent:
                     response = safe_get(f"https://{self.url}")
                     if response and "Strict-Transport-Security" in response.headers:
                         hsts = True
-
         except Exception as e:
             issues.append(f"SSL/TLS connection failed: {e}")
 
-        return {
-            "issues": issues,
-            "tls_version": tls_version,
-            "hsts": hsts
-        }
+        return {"issues": issues, "tls_version": tls_version, "hsts": hsts}
 
 
 # ================== AI VISUAL UX AGENT ==================
@@ -260,7 +218,6 @@ class AIVisualUXAgent:
     def run(self):
         if not self.screenshot_path or not os.path.exists(self.screenshot_path):
             return ["Screenshot not available, cannot generate UX critique."]
-
         # Mock AI critique
         critique = [
             "Primary call-to-action button is not prominent.",
@@ -300,7 +257,7 @@ def export_pdf(report):
             for issue in issues:
                 pdf.multi_cell(0, 6, f"- {issue}")
         elif isinstance(issues, dict):
-            if "issues" in issues:
+            if "issues" in issues and issues["issues"]:
                 for issue in issues["issues"]:
                     pdf.multi_cell(0, 6, f"- {issue}")
             if "tls_version" in issues and issues["tls_version"]:
@@ -315,9 +272,7 @@ def export_pdf(report):
 
 # ================== STREAMLIT UI ==================
 st.title("🤖 AI Website Testing Platform")
-st.write(
-    "Functional, UX, accessibility, security, SSL/TLS checks + AI visual UX critique."
-)
+st.write("Functional, UX, accessibility, security, SSL/TLS checks + AI visual UX critique.")
 
 url = st.text_input("🌐 Website URL", placeholder="https://example.com")
 
@@ -328,8 +283,6 @@ if st.button("🚀 Run Tests"):
         st.error("⚠️ Cannot resolve domain. Please check the URL and include https://")
     else:
         with st.spinner("Running tests..."):
-
-            # Core agents
             report = {
                 "Functional Issues": FunctionalAgent(url).run(),
                 "UX Issues": UXAgent(url).run(),
@@ -337,14 +290,9 @@ if st.button("🚀 Run Tests"):
                 "Security Issues": SecurityAgent(url).run(),
             }
 
-            # Browser screenshot
             browser_issues, screenshot = BrowserAgent(url).run()
             report["Browser Issues"] = browser_issues
-
-            # AI UX critique
             report["AI UX Critique"] = {"UX Critique": AIVisualUXAgent(screenshot).run()}
-
-            # SSL health
             ssl_report = SSLHealthAgent(url).run()
             report["SSL Health"] = ssl_report
 
@@ -380,6 +328,5 @@ if st.button("🚀 Run Tests"):
         # -------- EXPORTS --------
         csv_file = export_csv(report)
         pdf_file = export_pdf(report)
-
         st.download_button("⬇️ Download CSV", open(csv_file, "rb"), csv_file)
         st.download_button("⬇️ Download PDF", open(pdf_file, "rb"), pdf_file)
